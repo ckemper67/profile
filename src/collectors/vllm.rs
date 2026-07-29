@@ -253,7 +253,6 @@ pub(crate) fn histogram_window_mass(first: &Scrape, last: &Scrape, base: &str) -
     })
 }
 
-#[cfg(test)]
 fn histogram_window_mean(first: &Scrape, last: &Scrape, base: &str) -> Option<f64> {
     let m = histogram_window_mass(first, last, base)?;
     let x = m.sum_delta / m.count_delta;

@@ -1,15 +1,27 @@
 //! GPU backends. NVIDIA (NVML) is cross-platform; AMD (libdrm/amdgpu) is not
-//! compiled for Windows (no `std::os::fd` / DRM).
+//! compiled for Windows (no `std::os::fd` / DRM). Apple Silicon uses macmon
+//! instead of either vendor backend and doesn't need the nvidia/amd features.
 
-/// AMD feature is meaningful off Windows. On Windows the feature may be enabled
-/// in Cargo.toml defaults but the backend is not compiled.
-#[cfg(all(feature = "amd", not(target_os = "windows")))]
+#[cfg(target_os = "macos")]
+mod apple;
+/// AMD feature is meaningful off Windows and off macOS (Apple Silicon uses `apple`
+/// above). On Windows the feature may be enabled in Cargo.toml defaults but the
+/// backend is not compiled.
+#[cfg(all(
+    feature = "amd",
+    not(target_os = "windows"),
+    not(target_os = "macos")
+))]
 mod amd;
-#[cfg(feature = "nvidia")]
+#[cfg(all(feature = "nvidia", not(target_os = "macos")))]
 mod nvidia;
 mod polling;
 
-#[cfg(not(any(feature = "nvidia", all(feature = "amd", not(target_os = "windows")))))]
+#[cfg(not(any(
+    target_os = "macos",
+    feature = "nvidia",
+    all(feature = "amd", not(target_os = "windows"))
+)))]
 compile_error!(
     "profile requires a GPU backend: feature `nvidia`, or `amd` on non-Windows (libdrm/amdgpu)"
 );
@@ -32,6 +44,7 @@ pub struct GpuScanEntry {
 
 /// Single-shot scan of all GPUs on host. Used by gpu_assignment before profiling starts.
 /// Returns None if no GPU driver is available.
+#[cfg(not(target_os = "macos"))]
 pub fn scan_host_gpus() -> Option<Vec<GpuScanEntry>> {
     #[cfg(all(feature = "nvidia", feature = "amd", not(target_os = "windows")))]
     {
@@ -52,6 +65,12 @@ pub fn scan_host_gpus() -> Option<Vec<GpuScanEntry>> {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub fn scan_host_gpus() -> Option<Vec<GpuScanEntry>> {
+    apple::scan_host_gpus()
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn collect_gpu_metrics_for(
     window: Duration,
     explicit_indices: Option<&[u32]>,
@@ -79,7 +98,16 @@ pub fn collect_gpu_metrics_for(
     }
 }
 
+#[cfg(target_os = "macos")]
+pub fn collect_gpu_metrics_for(
+    window: Duration,
+    explicit_indices: Option<&[u32]>,
+) -> Result<(Vec<GpuRawMetrics>, SystemTime, Option<u32>)> {
+    apple::collect(window, explicit_indices)
+}
+
 /// Whether the host has the vendor toolchain needed for FP8 KV cache.
+#[cfg(not(target_os = "macos"))]
 pub fn fp8_compiler_available() -> bool {
     #[cfg(all(feature = "nvidia", feature = "amd", not(target_os = "windows")))]
     {
@@ -100,4 +128,9 @@ pub fn fp8_compiler_available() -> bool {
     {
         amd::fp8_compiler_available()
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn fp8_compiler_available() -> bool {
+    apple::fp8_compiler_available()
 }

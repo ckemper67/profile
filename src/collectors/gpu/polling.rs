@@ -138,6 +138,8 @@ pub(super) fn aggregate_polls(polls: &[GpuPoll]) -> AggregatedPolls {
 #[cfg(any(test, feature = "nvidia"))]
 /// Device indices to poll. Empty env input means "all GPUs on host."
 /// Scope vs TP is validated after collection in `validate_tensor_parallel_scope`.
+/// NVIDIA/AMD only - Apple Silicon always polls the single host GPU.
+#[cfg(not(target_os = "macos"))]
 pub(super) fn resolve_device_indices(env_indices: Vec<u32>, host_device_count: u32) -> Vec<u32> {
     if env_indices.is_empty() {
         (0..host_device_count).collect()
@@ -167,7 +169,7 @@ pub(super) fn sample_poll(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "macos")))]
 mod resolve_device_indices_tests {
     use super::resolve_device_indices;
 

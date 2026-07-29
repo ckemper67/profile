@@ -66,7 +66,7 @@ pub fn collect_llamacpp_metrics_for(
     let mut kv_cache_peak_perc: Option<f64> = None;
 
     run_sampling_loop(sample_count, |i| {
-        let body = fetch_metrics_body(&client, &url)?;
+        let body = fetch_metrics_body(&client, &url, REQ_TIMEOUT)?;
         let scrape = scrape_from_body(&body)?;
         if let Some(k) = kv_cache_usage_perc_from_scrape(&scrape).filter(|x| x.is_finite()) {
             kv_cache_peak_perc = Some(kv_cache_peak_perc.map_or(k, |p| p.max(k)));
