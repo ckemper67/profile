@@ -46,6 +46,7 @@ pub fn print_diagnose_table_with_report(
     aggregate_win: &RuntimeWindow,
     verbose_rules: bool,
     reveal_suppressed: bool,
+    batch: bool,
 ) {
     let lines = build_diagnose_lines(
         result,
@@ -55,7 +56,8 @@ pub fn print_diagnose_table_with_report(
         reveal_suppressed,
     );
     print_boxed(&lines);
-    if let Some(j) = journey_line(report) {
+    // "Apply the fix, profile re-measures" implies a closed loop that --batch skips.
+    if !batch && let Some(j) = journey_line(report) {
         println!();
         println!("{j}");
     }

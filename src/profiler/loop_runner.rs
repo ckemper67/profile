@@ -255,6 +255,7 @@ pub fn run(input: LoopRunnerInput<'_>) -> anyhow::Result<()> {
             &agg_win,
             verbose_rules,
             reveal_suppressed,
+            false,
         );
 
         // Prefill unread guide shown again: no scrapeable knob left to apply.

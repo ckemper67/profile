@@ -8,20 +8,41 @@ use crate::{context, engine, output, profiler};
 /// Fast-fail before collection starts. Longer hang is user-visible at startup.
 const PRE_FLIGHT_TIMEOUT: Duration = Duration::from_secs(2);
 
-pub fn execute(
-    selected_engine: Engine,
-    vllm_metrics_input: &str,
-    max_num_seqs: Option<u32>,
-    cost_per_hour: Option<f64>,
-    tensor_parallel_size: Option<u32>,
-    verbose_rules: bool,
-    duration: Duration,
-) -> anyhow::Result<()> {
+/// Inputs for one `diagnose` invocation (CLI-flag-shaped, before GPU/TP resolution).
+pub struct ExecuteInput<'a> {
+    pub engine: Engine,
+    pub url: &'a str,
+    pub max_num_seqs: Option<u32>,
+    pub cost_per_hour: Option<f64>,
+    pub tensor_parallel_size: Option<u32>,
+    pub verbose_rules: bool,
+    /// Print one report and exit -- no closed loop, no interactive prompts.
+    pub batch: bool,
+    pub duration: Duration,
+}
+
+pub fn execute(input: ExecuteInput<'_>) -> anyhow::Result<()> {
+    let ExecuteInput {
+        engine: selected_engine,
+        url: vllm_metrics_input,
+        max_num_seqs,
+        cost_per_hour,
+        tensor_parallel_size,
+        verbose_rules,
+        batch,
+        duration,
+    } = input;
+
     let resolved: u32 = if let Some(v) = max_num_seqs {
         v
     } else {
         match pre_flight_max_num_seqs(selected_engine, vllm_metrics_input) {
             Some(v) => v,
+            None if batch => {
+                anyhow::bail!(
+                    "--batch requires --max-num-seqs when it cannot be auto-detected (no interactive prompt in batch mode)."
+                );
+            }
             None => prompt_for_max_num_seqs()?,
         }
     };
@@ -48,11 +69,13 @@ pub fn execute(
         &aggregate_win,
         verbose_rules,
         false,
+        batch,
     );
 
     // Incomplete measurement: table already printed. Do not start the closed loop
     // (avoids empty recommendations → false healthy exit).
-    if !result.any_evaluable
+    if batch
+        || !result.any_evaluable
         || result.all_idle
         || report.n_eval < engine::ENGINE_MIN_PERSISTENT_WINDOWS
     {

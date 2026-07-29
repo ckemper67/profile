@@ -127,12 +127,20 @@ pub struct Cli {
     pub verbose: u8,
 
     #[arg(
+        long = "batch",
+        global = true,
+        help = "Print one report and exit (no closed loop, no prompts). For scripting/CI.",
+        display_order = 6
+    )]
+    pub batch: bool,
+
+    #[arg(
         short = 'h',
         long = "help",
         global = true,
         action = clap::ArgAction::Help,
         help = "Display this message",
-        display_order = 6
+        display_order = 7
     )]
     pub help_flag: Option<bool>,
 
@@ -176,15 +184,16 @@ pub enum Commands {
 
 pub fn run(cli: Cli) -> anyhow::Result<()> {
     match &cli.command {
-        Commands::Diagnose => diagnose::execute(
-            cli.engine,
-            &cli.url,
-            cli.max_num_seqs,
-            cli.cost_per_hour,
-            cli.tensor_parallel_size,
-            cli.verbose > 0,
-            cli.duration,
-        )?,
+        Commands::Diagnose => diagnose::execute(diagnose::ExecuteInput {
+            engine: cli.engine,
+            url: &cli.url,
+            max_num_seqs: cli.max_num_seqs,
+            cost_per_hour: cli.cost_per_hour,
+            tensor_parallel_size: cli.tensor_parallel_size,
+            verbose_rules: cli.verbose > 0,
+            batch: cli.batch,
+            duration: cli.duration,
+        })?,
         Commands::Help => {
             Cli::command().print_long_help()?;
             println!();
