@@ -387,6 +387,137 @@ static CATALOG: &[GpuEntry] = &[
             peak_bw_gbps: 288.0,
         },
     },
+    // ── Apple Silicon (unified memory) ──────────────────────────────────────
+    // `macmon::SocInfo.chip_name` reports e.g. "Apple M3 Pro" - matched here on
+    // the normalized "apple m<gen> [pro|max|ultra]" tokens. Variant entries
+    // (Pro/Max/Ultra) must precede the bare generation entry: token matching is
+    // substring-AND, so "m1" alone also matches inside "m1 pro"/"m1 max"/"m1 ultra".
+    //
+    // Like GB10, this is unified memory (no dedicated VRAM/HBM pool) - bandwidth
+    // is system-wide, shared with CPU/OS, and treat the ceiling as approximate.
+    // `peak_bw_gbps` is Apple's published memory bandwidth spec (high confidence).
+    // `peak_flops_tc_tflops` (FP16) has no Apple-published figure - Apple never
+    // discloses GPU TFLOPS - so it's derived as 2x an FP32-per-core rate fit to
+    // the two Apple-published FP32 anchors (M1 base ~2.6 TFLOPS, M2 Ultra 27.2
+    // TFLOPS official, M4 Max ~18.43 TFLOPS third-party-measured), scaled by
+    // each chip's published GPU core count. The M2 Ultra anchor round-trips to
+    // within 0.1 TFLOPS of Apple's own figure, which is the calibration check.
+    // Sources: https://www.apple.com/mac/compare/ (accessed 2026-07-29) for
+    // core counts and bandwidth; TFLOPS anchors per above.
+    GpuEntry {
+        tokens: &["m1", "ultra"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 41.6, // 64 cores x 0.325 FP32/core x 2
+            peak_bw_gbps: 800.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m1", "max"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 20.8, // 32 cores x 0.325 FP32/core x 2
+            peak_bw_gbps: 400.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m1", "pro"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 10.4, // 16 cores x 0.325 FP32/core x 2
+            peak_bw_gbps: 200.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m1"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 5.2, // 8 cores x 0.325 FP32/core x 2
+            peak_bw_gbps: 68.25,
+        },
+    },
+    GpuEntry {
+        tokens: &["m2", "ultra"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            // Calibration anchor: Apple states 27.2 TFLOPS FP32 for M2 Ultra; x2 for FP16.
+            peak_flops_tc_tflops: 54.4,
+            peak_bw_gbps: 800.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m2", "max"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 27.1, // 38 cores x 0.357 FP32/core x 2
+            peak_bw_gbps: 400.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m2", "pro"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 13.6, // 19 cores x 0.357 FP32/core x 2
+            peak_bw_gbps: 200.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m2"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 7.1, // 10 cores x 0.357 FP32/core x 2
+            peak_bw_gbps: 100.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m3", "max"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 28.2, // 40 cores x 0.353 FP32/core x 2
+            peak_bw_gbps: 400.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m3", "pro"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 12.7, // 18 cores x 0.353 FP32/core x 2
+            peak_bw_gbps: 150.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m3"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 7.1, // 10 cores x 0.353 FP32/core x 2
+            peak_bw_gbps: 100.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m4", "max"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            // Anchor: ~18.43 TFLOPS FP32 third-party-measured for M4 Max; x2 for FP16.
+            peak_flops_tc_tflops: 36.9,
+            peak_bw_gbps: 546.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m4", "pro"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 18.4, // 20 cores x 0.4608 FP32/core x 2
+            peak_bw_gbps: 273.0,
+        },
+    },
+    GpuEntry {
+        tokens: &["m4"],
+        entry: GpuCatalogEntry {
+            arch: "apple-silicon",
+            peak_flops_tc_tflops: 9.2, // 10 cores x 0.4608 FP32/core x 2
+            peak_bw_gbps: 120.0,
+        },
+    },
 ];
 
 /// Lowercase the name; replace non-alphanumeric characters (except `.`) with spaces.
@@ -738,5 +869,58 @@ mod tests {
         let e = lookup_gpu("AMD Radeon RX 7600 XT").expect("no match");
         assert_eq!(e.peak_flops_tc_tflops, 45.1);
         assert_eq!(e.peak_bw_gbps, 288.0);
+    }
+
+    #[test]
+    fn apple_m1_ultra_not_matched_by_bare_m1_entry() {
+        let e = lookup_gpu("Apple M1 Ultra").expect("no match");
+        assert_eq!(e.arch, "apple-silicon");
+        assert_eq!(e.peak_bw_gbps, 800.0);
+    }
+
+    #[test]
+    fn apple_m1_max() {
+        let e = lookup_gpu("Apple M1 Max").expect("no match");
+        assert_eq!(e.peak_bw_gbps, 400.0);
+    }
+
+    #[test]
+    fn apple_m1_pro() {
+        let e = lookup_gpu("Apple M1 Pro").expect("no match");
+        assert_eq!(e.peak_bw_gbps, 200.0);
+    }
+
+    #[test]
+    fn apple_bare_m1_not_matched_by_variant_entries() {
+        let e = lookup_gpu("Apple M1").expect("no match");
+        assert_eq!(e.peak_bw_gbps, 68.25);
+    }
+
+    #[test]
+    fn apple_m2_ultra_matches_official_anchor() {
+        let e = lookup_gpu("Apple M2 Ultra").expect("no match");
+        // 27.2 TFLOPS FP32 (Apple-published) x 2 for FP16.
+        assert_eq!(e.peak_flops_tc_tflops, 54.4);
+        assert_eq!(e.peak_bw_gbps, 800.0);
+    }
+
+    #[test]
+    fn apple_m3_pro_not_matched_by_bare_m3_entry() {
+        let e = lookup_gpu("Apple M3 Pro").expect("no match");
+        assert_eq!(e.peak_bw_gbps, 150.0);
+    }
+
+    #[test]
+    fn apple_m4_max() {
+        let e = lookup_gpu("Apple M4 Max").expect("no match");
+        // ~18.43 TFLOPS FP32 (third-party measured) x 2 for FP16.
+        assert_eq!(e.peak_flops_tc_tflops, 36.9);
+        assert_eq!(e.peak_bw_gbps, 546.0);
+    }
+
+    #[test]
+    fn apple_bare_m4() {
+        let e = lookup_gpu("Apple M4").expect("no match");
+        assert_eq!(e.peak_bw_gbps, 120.0);
     }
 }
