@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::{BTreeSet, HashSet};
 use std::io::{self, BufRead, IsTerminal, Write};
 
+use crate::cli::Engine;
 use crate::cli::diagnose::{TP_ABORT_HINT, prompt_u32_required};
 use crate::collectors::gpu::GpuScanEntry;
 
@@ -96,9 +97,27 @@ fn short_gpu_name(name: &str) -> String {
 }
 
 pub(crate) fn resolve_gpu_assignment(
+    engine: Engine,
     cli_tp: Option<u32>,
     url: &str,
 ) -> anyhow::Result<GpuAssignment> {
+    if engine == Engine::LlamaCpp {
+        // Apple Silicon is single-GPU, unified memory - no tensor-parallel launch
+        // scope to detect. MULTI_GPU_TP is unconditionally false today anyway
+        // (engine::MULTI_GPU_TP), so this mirrors the vLLM single-GPU path without
+        // spending a NVML/AMD scan that would just come back empty on macOS.
+        if let Some(tp) = cli_tp
+            && tp > 1
+        {
+            anyhow::bail!(
+                "llama.cpp on Apple Silicon is single-GPU; --tensor-parallel-size {tp} is not supported."
+            );
+        }
+        return Ok(GpuAssignment {
+            tp: 1,
+            indices: vec![0],
+        });
+    }
     let scan = crate::collectors::gpu::scan_host_gpus();
     let host_count = scan.as_ref().map(|s| s.len() as u32);
     resolve_gpu_assignment_inner(host_count, scan, cli_tp, url)

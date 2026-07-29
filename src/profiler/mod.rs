@@ -2,7 +2,8 @@
 //!
 //! Multi-window aggregation rules: `docs/collection-policy.md`.
 
-use crate::collectors::{self, build_config, window_is_evaluable, window_is_idle};
+use crate::cli::Engine;
+use crate::collectors::{self, build_config, build_llamacpp_config, window_is_evaluable, window_is_idle};
 use crate::context::{RuntimeWindow, StaticContext};
 use std::time::{Duration, SystemTime};
 
@@ -37,6 +38,7 @@ pub struct DiagnoseResult {
 }
 
 pub fn run_diagnose(
+    engine: Engine,
     vllm_metrics_input: &str,
     max_num_seqs: Option<u32>,
     cost_per_hour: Option<f64>,
@@ -49,6 +51,7 @@ pub fn run_diagnose(
     let window = logical_window_size(duration);
     let window_durations = build_window_durations(duration, window);
     let raw_windows = collect_windows(
+        engine,
         vllm_metrics_input,
         &window_durations,
         tensor_parallel_size,
@@ -79,7 +82,10 @@ pub fn run_diagnose(
             aggregate::EnergyPairMeta::default(),
         )
     };
-    let mut config = build_config(vllm_metrics_input, &snapshot, max_num_seqs);
+    let mut config = match engine {
+        Engine::Vllm => build_config(vllm_metrics_input, &snapshot, max_num_seqs),
+        Engine::LlamaCpp => build_llamacpp_config(vllm_metrics_input, &snapshot, max_num_seqs),
+    };
     config.cost_per_hour = cost_per_hour;
     config.tensor_parallel_size = Some(tensor_parallel_size);
     let static_ctx = StaticContext::from_snapshot(&snapshot, config);
@@ -138,6 +144,7 @@ fn track_window_topology(
 }
 
 fn collect_windows(
+    engine: Engine,
     vllm_metrics_input: &str,
     window_durations: &[Duration],
     tensor_parallel_size: u32,
@@ -149,6 +156,7 @@ fn collect_windows(
 
     for &this_window in window_durations {
         let snap = collectors::collect_snapshot_for_window(
+            engine,
             vllm_metrics_input,
             this_window,
             tensor_parallel_size,

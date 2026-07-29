@@ -10,6 +10,15 @@ use std::time::Duration;
 const DEFAULT_METRICS_URL: &str = "http://localhost:8000/metrics";
 const DEFAULT_DURATION: &str = "30s";
 
+/// Which inference server to scrape. Determines the collector, config source,
+/// and which engine-specific rule behavior applies (see `engine` module).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Engine {
+    Vllm,
+    #[value(name = "llama-cpp")]
+    LlamaCpp,
+}
+
 const ABOUT: &str = "Detects inefficiencies. Suggests fixes.";
 const MAX_DURATION: Duration = Duration::from_secs(30 * 60);
 const MIN_DURATION: Duration = Duration::from_secs(30);
@@ -37,10 +46,20 @@ pub struct Cli {
         default_value = DEFAULT_METRICS_URL,
         env = "PROFILE_URL",
         hide_env_values = true,
-        help = "vLLM metrics endpoint",
+        help = "Metrics endpoint (vLLM default: http://localhost:8000/metrics; llama.cpp default: http://localhost:8080/metrics)",
         display_order = 0
     )]
     pub url: String,
+
+    #[arg(
+        long = "engine",
+        global = true,
+        value_enum,
+        default_value = "vllm",
+        help = "Inference server to diagnose (vllm or llama-cpp)",
+        display_order = 1
+    )]
+    pub engine: Engine,
 
     #[arg(
         long = "duration",
@@ -158,6 +177,7 @@ pub enum Commands {
 pub fn run(cli: Cli) -> anyhow::Result<()> {
     match &cli.command {
         Commands::Diagnose => diagnose::execute(
+            cli.engine,
             &cli.url,
             cli.max_num_seqs,
             cli.cost_per_hour,

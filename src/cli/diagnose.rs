@@ -2,12 +2,14 @@ use std::io::{self, BufRead, Write};
 use std::time::Duration;
 
 use crate::cli::gpu_assignment::resolve_gpu_assignment;
+use crate::cli::Engine;
 use crate::{context, engine, output, profiler};
 
 /// Fast-fail before collection starts. Longer hang is user-visible at startup.
 const PRE_FLIGHT_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub fn execute(
+    selected_engine: Engine,
     vllm_metrics_input: &str,
     max_num_seqs: Option<u32>,
     cost_per_hour: Option<f64>,
@@ -18,15 +20,17 @@ pub fn execute(
     let resolved: u32 = if let Some(v) = max_num_seqs {
         v
     } else {
-        match pre_flight_max_num_seqs(vllm_metrics_input) {
+        match pre_flight_max_num_seqs(selected_engine, vllm_metrics_input) {
             Some(v) => v,
             None => prompt_for_max_num_seqs()?,
         }
     };
 
-    let assignment = resolve_gpu_assignment(tensor_parallel_size, vllm_metrics_input)?;
+    let assignment =
+        resolve_gpu_assignment(selected_engine, tensor_parallel_size, vllm_metrics_input)?;
 
     let result = profiler::run_diagnose(
+        selected_engine,
         vllm_metrics_input,
         Some(resolved),
         cost_per_hour,
@@ -56,6 +60,7 @@ pub fn execute(
     }
 
     profiler::loop_runner::run(profiler::loop_runner::LoopRunnerInput {
+        engine: selected_engine,
         url: vllm_metrics_input,
         max_num_seqs: resolved,
         cost_per_hour,
@@ -83,8 +88,13 @@ impl profiler::MaxNumSeqsPrompt for DiagnoseMaxNumSeqsPrompt {
     }
 }
 
-fn pre_flight_max_num_seqs(url: &str) -> Option<u32> {
-    crate::collectors::vllm::preflight_max_num_seqs(url, PRE_FLIGHT_TIMEOUT)
+fn pre_flight_max_num_seqs(selected_engine: Engine, url: &str) -> Option<u32> {
+    match selected_engine {
+        Engine::Vllm => crate::collectors::vllm::preflight_max_num_seqs(url, PRE_FLIGHT_TIMEOUT),
+        Engine::LlamaCpp => {
+            crate::collectors::llamacpp::preflight_max_num_seqs(url, PRE_FLIGHT_TIMEOUT)
+        }
+    }
 }
 
 const MAX_NUM_SEQS_PROMPT: &str =

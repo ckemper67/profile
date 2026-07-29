@@ -142,6 +142,39 @@ fn apply_info_scheduler_gaps(cfg: &mut VllmConfig, info: &InfoData) {
     }
 }
 
+/// Full config for a llama.cpp deployment, sourced from `GET /props` (best-effort) plus the
+/// scraped snapshot. Reuses `VllmConfig` - the downstream engine/rules only care about the
+/// resolved values, not which server produced them.
+///
+/// Field mapping: `total_slots` -> `max_num_seqs` (llama.cpp's `--parallel`, the closest analog
+/// to vLLM's concurrency cap), `n_ctx` -> `max_model_len`, `tensor_parallel_size` is always
+/// `Some(1)` (single-GPU Apple Silicon path, no TP concept in llama.cpp). `model_ftype` (the
+/// GGUF quantization string, e.g. "Q4_K - Medium") is stored in both `dtype` and
+/// `vllm_reported_quantization` since llama.cpp conflates precision and quantization scheme in
+/// one field, unlike vLLM's separate `dtype`/`quantization`.
+pub fn build_llamacpp_config(
+    metrics_url: &str,
+    snapshot: &RawSnapshot,
+    cli_max_num_seqs: Option<u32>,
+) -> VllmConfig {
+    let mut cfg = config_from_snapshot(snapshot, cli_max_num_seqs);
+    cfg.tensor_parallel_size = Some(1);
+    let base = base_url_from_metrics(metrics_url);
+    if let Some(client) = super::shared_http_client() {
+        let props = super::llamacpp::fetch_llamacpp_props(client, &base);
+        cfg.max_num_seqs = props.total_slots.or(cfg.max_num_seqs);
+        cfg.max_model_len = props.n_ctx.or(cfg.max_model_len);
+        cfg.model_name = props.model_alias.or(cfg.model_name);
+        cfg.model_root = props.model_path;
+        if let Some(ftype) = props.model_ftype {
+            cfg.dtype = Some(ftype.clone());
+            cfg.vllm_reported_dtype = Some(ftype.clone());
+            cfg.vllm_reported_quantization = Some(ftype);
+        }
+    }
+    cfg
+}
+
 /// Strip `/metrics` suffix to get the vLLM server base URL.
 /// Strips /metrics, preserves any other path segments. Consistent with
 /// collector URL handling. Common diagnose URL (scheme://host/metrics)

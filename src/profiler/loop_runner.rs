@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use super::{DiagnoseResult, MaxNumSeqsPrompt, delta, drift, poll, run_diagnose, state::LoopState};
+use crate::cli::Engine;
 use crate::context::{AnalysisInput, RuntimeWindow};
 use crate::engine;
 use crate::engine::rule_names;
@@ -64,6 +65,7 @@ pub(crate) fn prefill_unread_exhausted_exit_message() -> &'static str {
 
 /// Inputs for the interactive diagnose closed loop.
 pub struct LoopRunnerInput<'a> {
+    pub engine: Engine,
     pub url: &'a str,
     pub max_num_seqs: u32,
     pub cost_per_hour: Option<f64>,
@@ -78,6 +80,7 @@ pub struct LoopRunnerInput<'a> {
 
 pub fn run(input: LoopRunnerInput<'_>) -> anyhow::Result<()> {
     let LoopRunnerInput {
+        engine: selected_engine,
         url,
         max_num_seqs,
         cost_per_hour,
@@ -185,6 +188,7 @@ pub fn run(input: LoopRunnerInput<'_>) -> anyhow::Result<()> {
 
         println!("\nMeasuring delta...\n");
         let new_result = run_diagnose(
+            selected_engine,
             url,
             Some(current_max_num_seqs),
             cost_per_hour,

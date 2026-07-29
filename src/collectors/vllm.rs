@@ -66,7 +66,7 @@ fn first_gauge(scrape: &Scrape, name: &str) -> Option<f64> {
         })
 }
 
-fn sum_metric_samples(scrape: &Scrape, name: &str) -> Option<f64> {
+pub(crate) fn sum_metric_samples(scrape: &Scrape, name: &str) -> Option<f64> {
     let mut total = 0.0;
     let mut any = false;
     for s in &scrape.samples {
@@ -101,7 +101,7 @@ fn total_request_success(scrape: &Scrape) -> Option<f64> {
 }
 
 /// `(last - first) / window_secs` when monotonic; `None` on reset, missing endpoints, or **zero window** (no divide-by-zero).
-fn counter_delta_per_sec(first: Option<f64>, last: Option<f64>, window_secs: f64) -> Option<f64> {
+pub(crate) fn counter_delta_per_sec(first: Option<f64>, last: Option<f64>, window_secs: f64) -> Option<f64> {
     if window_secs <= f64::EPSILON {
         return None;
     }
@@ -235,7 +235,7 @@ fn histogram_mean_ms_from_scrape(scrape: &Scrape, base: &str) -> Option<f64> {
 
 /// Aggregated `(Δsum)/(Δcount)` across all series for `base` (histogram `_sum` / `_count`).
 /// Units match the histogram (seconds vs tokens). `None` if **`Δcount <= 0`** (no new observations), reset, or non-finite.
-fn histogram_window_mass(first: &Scrape, last: &Scrape, base: &str) -> Option<HistogramWindowMass> {
+pub(crate) fn histogram_window_mass(first: &Scrape, last: &Scrape, base: &str) -> Option<HistogramWindowMass> {
     let sum_key = format!("{base}_sum");
     let count_key = format!("{base}_count");
     let s0 = sum_metric_samples(first, &sum_key)?;
@@ -266,8 +266,7 @@ fn tpot_window_mass(first: &Scrape, last: &Scrape) -> Option<HistogramWindowMass
         .or_else(|| histogram_window_mass(first, last, "vllm_time_per_output_token_seconds"))
 }
 
-#[cfg(test)]
-fn histogram_window_mean_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<f64> {
+pub(crate) fn histogram_window_mean_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<f64> {
     histogram_window_mean(first, last, base).map(|sec| sec * 1000.0)
 }
 
@@ -369,8 +368,7 @@ pub(crate) fn histogram_quantile(q: f64, buckets: &[HistogramCount]) -> Option<Q
 /// Returns None on counter reset (any bucket delta < 0), bucket count mismatch, or zero traffic.
 /// No fallback to cumulative - stale historical p99 is worse than no value.
 /// `value` is in milliseconds; `clamped` preserved from the quantile.
-#[cfg(test)]
-fn histogram_window_p99_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<QuantileEstimate> {
+pub(crate) fn histogram_window_p99_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<QuantileEstimate> {
     let delta = histogram_window_delta_buckets(first, last, base);
     histogram_quantile(0.99, &delta).map(|q| QuantileEstimate {
         value: q.value * 1000.0,
@@ -378,8 +376,7 @@ fn histogram_window_p99_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<
     })
 }
 
-#[cfg(test)]
-fn histogram_window_p95_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<QuantileEstimate> {
+pub(crate) fn histogram_window_p95_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<QuantileEstimate> {
     let delta = histogram_window_delta_buckets(first, last, base);
     histogram_quantile(0.95, &delta).map(|q| QuantileEstimate {
         value: q.value * 1000.0,
@@ -389,7 +386,7 @@ fn histogram_window_p95_ms(first: &Scrape, last: &Scrape, base: &str) -> Option<
 
 /// Returns the per-window delta bucket vector (last − first) for `base` metric.
 /// Returns empty Vec on counter reset, bucket mismatch, or no traffic (same conditions as histogram_window_p99_ms).
-fn histogram_window_delta_buckets(
+pub(crate) fn histogram_window_delta_buckets(
     first: &Scrape,
     last: &Scrape,
     base: &str,

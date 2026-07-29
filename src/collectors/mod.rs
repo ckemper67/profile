@@ -5,6 +5,7 @@
 pub mod config;
 pub mod gpu;
 pub mod host_memory;
+pub mod llamacpp;
 pub mod sampling;
 pub mod types;
 pub mod vllm;
@@ -14,7 +15,7 @@ mod test_support;
 #[cfg(test)]
 pub(crate) use test_support::{RawSnapshotFixture, snap_vllm};
 
-pub use config::{VllmConfig, build_config};
+pub use config::{VllmConfig, build_config, build_llamacpp_config};
 pub(crate) use types::observations_aligned;
 pub use types::{
     AggregateGpuMetrics, CacheConfigLabels, GpuFingerprint, GpuRawMetrics, HistogramCount,
@@ -27,6 +28,8 @@ pub(crate) use vllm::merge_p99_bucket_vecs;
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
+
+use crate::cli::Engine;
 
 /// Shared blocking client. Success is memoized; a failed build is retried next call
 /// (never cache `None` — that would kill the session after a transient failure).
@@ -45,6 +48,7 @@ pub(crate) fn shared_http_client() -> Option<&'static reqwest::blocking::Client>
 }
 
 pub fn collect_snapshot_for_window(
+    engine: Engine,
     vllm_metrics_input: &str,
     window: Duration,
     tensor_parallel_size: u32,
@@ -55,8 +59,12 @@ pub fn collect_snapshot_for_window(
     let indices = gpu_indices.to_vec();
 
     let gpu_handle = thread::spawn(move || gpu::collect_gpu_metrics_for(window, Some(&indices)));
-    let vllm_handle =
-        thread::spawn(move || vllm::collect_vllm_metrics_for(&url, window, known_max_num_seqs));
+    // known_max_num_seqs is a vLLM-only fallback (llama.cpp always gets slot count
+    // directly and reliably from /props, see collectors::config::build_llamacpp_config).
+    let engine_handle = thread::spawn(move || match engine {
+        Engine::Vllm => vllm::collect_vllm_metrics_for(&url, window, known_max_num_seqs),
+        Engine::LlamaCpp => llamacpp::collect_llamacpp_metrics_for(&url, window),
+    });
 
     let (mut gpus, gpu_observed_at, _) = gpu_handle
         .join()
@@ -71,9 +79,9 @@ pub fn collect_snapshot_for_window(
 
     gpus.sort_by_key(|a| a.identity());
 
-    let (vllm, vllm_observed_at) = vllm_handle
+    let (engine_metrics, vllm_observed_at) = engine_handle
         .join()
-        .map_err(|_| anyhow::anyhow!("vLLM collector panicked"))??;
+        .map_err(|_| anyhow::anyhow!("engine collector panicked"))??;
 
     let host_memory = host_memory::read_host_memory_facts();
 
@@ -81,7 +89,7 @@ pub fn collect_snapshot_for_window(
         gpu_observed_at,
         vllm_observed_at,
         timestamp: std::time::SystemTime::now(),
-        vllm,
+        vllm: engine_metrics,
         gpus,
         host_memory,
     })
