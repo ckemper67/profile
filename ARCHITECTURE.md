@@ -93,3 +93,61 @@ Semantics that bite:
 - **Config enrichment:** `src/collectors/config.rs` (`build_config`). Runs after collection inside `run_diagnose`; snapshot fields + CLI, then best-effort `/v1/models`, `/info`, and `/server_info`. Scheduler knobs (`enable_chunked_prefill`, `max_num_batched_tokens`) are filled from those JSON/text endpoints when Prometheus omits them (modern vLLM keeps them on `SchedulerConfig`, not `cache_config_info`).
 - **Output formatting:** `src/output/stdout.rs`. Convention: `~` marks values derived from estimated ceilings; measured values carry no tilde.
 - **Rule thresholds:** named constants at the top of each rule file in `src/engine/rules/`. Semantics and edge cases are in the [rules documentation](https://jungledesh.github.io/profile/docs.html#rules).
+
+## Fork addition: llama.cpp / Apple Silicon support
+
+This fork (`llamacpp-macos-support`) adds a second inference-server backend and a
+second GPU-telemetry backend, selected by `--engine {vllm,llama-cpp}` (default
+`vllm`, preserving upstream behavior when unset).
+
+- **`cli/mod.rs`**: `Engine::{Vllm, LlamaCpp}` (upstream already carries the enum
+  and `--engine`/`--url` flags as unwired scaffolding; this fork is what actually
+  consumes them) selects the collector and config-builder below.
+- **`cli/gpu_assignment.rs`**: short-circuits to a fixed `{tp: 1, indices: [0]}`
+  for `--engine llama-cpp` -- Apple Silicon is single-GPU with no tensor-parallel
+  launch scope to detect.
+- **`collectors/llamacpp.rs`**: scrapes `llama-server`'s `/metrics` (throughput
+  counters/gauges, plus TTFT/TPOT histograms and a KV-cache-usage gauge added
+  upstream in `llama.cpp` itself specifically to support this tool -- see
+  "Upstream" below) and `/props` (`total_slots` -> `max_num_seqs`, `n_ctx` ->
+  `max_model_len`, model info). Reuses `vllm.rs`'s generic Prometheus
+  histogram/counter math (`pub(crate)`) rather than duplicating it. Fields with
+  no llama.cpp source (prefill/queue latency split, prompt-length distribution,
+  preemption/swap, CPU KV offload, prefix-cache hit rate) stay `None`, same as
+  any other missing gauge.
+- **`collectors/config.rs`**: `build_llamacpp_config` mirrors `build_config`,
+  sourced from `/props` instead of `/v1/models`+`/info`. Reuses `VllmConfig` as-is
+  -- downstream `engine`/`rules` code only cares about resolved values, not which
+  server produced them. `model_ftype` (the GGUF quantization string, e.g. "Q4_K -
+  Medium") is stored in both `dtype` and `vllm_reported_quantization` since
+  llama.cpp conflates precision and quantization scheme in one field.
+- **`collectors/gpu/apple.rs`**: `#[cfg(target_os = "macos")]`-gated telemetry via
+  `macmon::Sampler` (sudoless IOReport read, no subprocess) for GPU util/power/
+  clock/temp; system-wide unified memory stands in for VRAM (Apple Silicon has no
+  dedicated VRAM pool). Selected entirely by `#[cfg(target_os = "macos")]` in
+  `gpu/mod.rs`, not a runtime fallback -- `libamdgpu_top` has no macOS backend and
+  panics if reached there. `macmon` is a `target.'cfg(target_os =
+  "macos")'.dependencies` entry, not unconditional like `nvml-wrapper`/
+  `libamdgpu_top`, to avoid shipping either vendor crate's non-functional-but-
+  compiles-fine-on-macOS runtime path into the collection code path.
+- **`context/gpu_catalog.rs`**: Apple Silicon chip entries (M1-M4 families),
+  matched on `macmon`'s `chip_name` (e.g. "Apple M3 Pro") -- documented as
+  approximate/unified-memory, same caveat as the NVIDIA GB10 entry.
+- **`engine/baseline/roofline.rs`**: KV cache headroom branches on GPU type.
+  vLLM's `vram_gb * gpu_memory_utilization - buffer - weight_gb/tp` assumes a
+  dedicated VRAM pool sized by policy fraction; for unified-memory GPUs (detected
+  by GPU name substring "apple", `is_unified_memory_gpu`)
+  `math::kv_headroom_gb_unified_memory` instead nets live system-wide memory
+  usage against total unified memory, since there's no dedicated pool or
+  utilization fraction to reserve against.
+
+### Upstream
+
+The llama.cpp collector depends on three `/metrics` additions upstreamed into
+`llama.cpp`'s own `tools/server/server-context.cpp` alongside this project:
+`llamacpp:ttft_seconds` / `llamacpp:tpot_seconds` histograms (in the same
+cumulative-bucket Prometheus shape vLLM uses) and a
+`llamacpp:kv_cache_usage_ratio` gauge. Without these, llama.cpp's stock
+`/metrics` has only throughput counters and queue-depth gauges -- no latency
+distribution, no KV-cache-usage signal, which several rules and the limiter
+depend on.
