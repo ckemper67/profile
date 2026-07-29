@@ -153,6 +153,14 @@ pub fn baseline_missing_reason(ctx: &crate::context::StaticContext) -> &'static 
     "hardware ceiling inputs incomplete"
 }
 
+/// True for GPUs with no dedicated VRAM pool (Apple Silicon unified memory), where
+/// the vLLM `gpu_memory_utilization` fraction-of-VRAM model doesn't apply. Matched on
+/// the GPU name `apple.rs` reports (`macmon::SocInfo.chip_name`, e.g. "Apple M3 Pro"),
+/// same signal `gpu_catalog`'s Apple Silicon entries key off.
+fn is_unified_memory_gpu(name: Option<&str>) -> bool {
+    name.is_some_and(|n| n.to_ascii_lowercase().contains("apple"))
+}
+
 pub fn compute(input: &AnalysisInput<'_>) -> Option<PhysicsBaseline> {
     let ctx = input.ctx;
     let peak_flops = ctx.gpu.peak_flops_tc_tflops?;
@@ -297,13 +305,26 @@ pub fn compute_with_subset(
         ctx.config.kv_cache_dtype.as_deref(),
     );
     let (kv_bytes_per_element, kv_cache_dtype_source) = math::resolve_kv_cache_element(kv_dtype);
-    let kv_headroom_gb = ctx.gpu.vram_gb.map(|vram| {
-        let gpu_util = ctx
-            .config
-            .gpu_memory_utilization
-            .unwrap_or(DEFAULT_GPU_MEMORY_UTILIZATION);
-        (vram * gpu_util) - math::ACTIVATION_KV_BUFFER_GB - (weight_gb / tp)
-    });
+    let kv_headroom_gb = if is_unified_memory_gpu(ctx.gpu.name.as_deref()) {
+        // Apple Silicon: no dedicated VRAM pool / --gpu-memory-utilization fraction.
+        // Use live system-wide memory usage instead - see math::kv_headroom_gb_unified_memory.
+        snap.gpus
+            .first()
+            .and_then(|g| g.vram_used_mb)
+            .zip(ctx.gpu.vram_gb)
+            .map(|(used_mb, total_gb)| {
+                let used_gb = crate::collectors::mib_to_decimal_gb(used_mb);
+                math::kv_headroom_gb_unified_memory(total_gb, used_gb, weight_gb)
+            })
+    } else {
+        ctx.gpu.vram_gb.map(|vram| {
+            let gpu_util = ctx
+                .config
+                .gpu_memory_utilization
+                .unwrap_or(DEFAULT_GPU_MEMORY_UTILIZATION);
+            (vram * gpu_util) - math::ACTIVATION_KV_BUFFER_GB - (weight_gb / tp)
+        })
+    };
     let tpot_floor_ms = math::latency_floor_ms(decode.expected);
     let prefill_latency_floor_ms = prefill.map(|p| math::latency_floor_ms(p.expected));
 
@@ -1645,6 +1666,52 @@ mod tests {
             (headroom - expected).abs() < 1e-3,
             "expected {expected}GB kv headroom per GPU, got {headroom}"
         );
+    }
+
+    #[test]
+    fn apple_silicon_uses_unified_memory_headroom_not_gpu_util_fraction() {
+        let cfg = VllmConfig {
+            tensor_parallel_size: Some(1),
+            kv_cache_dtype: Some("bf16".to_string()),
+            // Deliberately no gpu_memory_utilization -- llama.cpp never sets it.
+            ..Default::default()
+        };
+        let snap = EngineRawMetrics {
+            generation_tokens_per_sec: Some(20.0),
+            num_requests_running: Some(1.0),
+            ..Default::default()
+        };
+        let (mut ctx, mut win) = baseline_input(
+            Some(8_000_000_000),
+            None,
+            Some("bf16"),
+            Some(9.2),
+            Some(120.0),
+            cfg,
+            snap,
+        );
+        ctx.gpu.name = Some("Apple M4".to_string());
+        ctx.gpu.vram_gb = Some(24.0);
+        win.snapshot.gpus = vec![GpuRawMetrics {
+            vram_used_mb: Some(12_000), // 12GB resident: weights + OS + other apps
+            vram_total_mb: Some(24_000),
+            ..Default::default()
+        }];
+
+        let b = compute(&AnalysisInput::new(&ctx, &win)).expect("baseline");
+        // weight_gb = 8e9 params * 16 bits (bf16) / 8 / 1e9 = 16.0 GB
+        assert!((b.weight_gb - 16.0).abs() < 1e-3);
+        let headroom = b.kv_headroom_gb.expect("kv headroom");
+        let used_gb = crate::collectors::mib_to_decimal_gb(12_000);
+        let expected = math::kv_headroom_gb_unified_memory(24.0, used_gb, 16.0);
+        assert!(
+            (headroom - expected).abs() < 1e-3,
+            "expected {expected}GB unified-memory headroom, got {headroom}"
+        );
+        // Sanity: this must not equal the vLLM-style fraction-of-VRAM formula.
+        let vllm_style =
+            (24.0 * DEFAULT_GPU_MEMORY_UTILIZATION) - math::ACTIVATION_KV_BUFFER_GB - 16.0;
+        assert!((headroom - vllm_style).abs() > 1.0);
     }
 
     #[test]

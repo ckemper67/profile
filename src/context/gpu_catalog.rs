@@ -407,7 +407,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m1", "ultra"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 41.6, // 64 cores x 0.325 FP32/core x 2
             peak_bw_gbps: 800.0,
         },
@@ -415,7 +414,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m1", "max"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 20.8, // 32 cores x 0.325 FP32/core x 2
             peak_bw_gbps: 400.0,
         },
@@ -423,7 +421,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m1", "pro"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 10.4, // 16 cores x 0.325 FP32/core x 2
             peak_bw_gbps: 200.0,
         },
@@ -431,7 +428,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m1"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 5.2, // 8 cores x 0.325 FP32/core x 2
             peak_bw_gbps: 68.25,
         },
@@ -439,7 +435,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m2", "ultra"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             // Calibration anchor: Apple states 27.2 TFLOPS FP32 for M2 Ultra; x2 for FP16.
             peak_flops_tc_tflops: 54.4,
             peak_bw_gbps: 800.0,
@@ -448,7 +443,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m2", "max"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 27.1, // 38 cores x 0.357 FP32/core x 2
             peak_bw_gbps: 400.0,
         },
@@ -456,7 +450,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m2", "pro"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 13.6, // 19 cores x 0.357 FP32/core x 2
             peak_bw_gbps: 200.0,
         },
@@ -464,7 +457,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m2"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 7.1, // 10 cores x 0.357 FP32/core x 2
             peak_bw_gbps: 100.0,
         },
@@ -472,7 +464,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m3", "max"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 28.2, // 40 cores x 0.353 FP32/core x 2
             peak_bw_gbps: 400.0,
         },
@@ -480,7 +471,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m3", "pro"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 12.7, // 18 cores x 0.353 FP32/core x 2
             peak_bw_gbps: 150.0,
         },
@@ -488,7 +478,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m3"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 7.1, // 10 cores x 0.353 FP32/core x 2
             peak_bw_gbps: 100.0,
         },
@@ -496,7 +485,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m4", "max"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             // Anchor: ~18.43 TFLOPS FP32 third-party-measured for M4 Max; x2 for FP16.
             peak_flops_tc_tflops: 36.9,
             peak_bw_gbps: 546.0,
@@ -505,7 +493,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m4", "pro"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 18.4, // 20 cores x 0.4608 FP32/core x 2
             peak_bw_gbps: 273.0,
         },
@@ -513,7 +500,6 @@ static CATALOG: &[GpuEntry] = &[
     GpuEntry {
         tokens: &["m4"],
         entry: GpuCatalogEntry {
-            arch: "apple-silicon",
             peak_flops_tc_tflops: 9.2, // 10 cores x 0.4608 FP32/core x 2
             peak_bw_gbps: 120.0,
         },
@@ -874,7 +860,6 @@ mod tests {
     #[test]
     fn apple_m1_ultra_not_matched_by_bare_m1_entry() {
         let e = lookup_gpu("Apple M1 Ultra").expect("no match");
-        assert_eq!(e.arch, "apple-silicon");
         assert_eq!(e.peak_bw_gbps, 800.0);
     }
 

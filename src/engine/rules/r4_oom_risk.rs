@@ -35,6 +35,15 @@ fn confidence_for_source(weight_dtype_source: WeightDtypeSource) -> f64 {
 }
 
 /// r4: weights exceed GPU VRAM budget (`kv_headroom_gb < 0`).
+///
+/// On vLLM/NVIDIA-AMD, `kv_headroom_gb` is a dynamic mid-run figure - vLLM's paged
+/// allocator can be pushed into OOM by concurrency growth after a healthy start, so
+/// this rule re-evaluates every window. On llama.cpp (unified memory,
+/// `kv_headroom_gb` computed by `math::kv_headroom_gb_unified_memory`), the KV cache
+/// is sized once at launch from `--ctx-size * --parallel` and either fits or the
+/// server fails to start - there's no equivalent mid-run OOM path. The firing
+/// condition still answers a useful question there ("does this configuration fit"),
+/// just evaluated once against launch parameters rather than as an ongoing risk.
 pub fn r4_recommendation(
     kv_headroom_gb: Option<f64>,
     tensor_parallel_size: Option<u32>,

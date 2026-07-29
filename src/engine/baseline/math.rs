@@ -62,6 +62,21 @@ pub fn weight_gb(param_count: u64, bits_per_param: u8) -> f64 {
     (param_count as f64 * bits_per_param as f64) / (8.0 * 1e9)
 }
 
+/// KV cache headroom for a unified-memory host (Apple Silicon), in place of vLLM's
+/// `vram_gb * gpu_memory_utilization - buffer - weight_gb/tp`.
+///
+/// There's no dedicated VRAM pool or `--gpu-memory-utilization` fraction to reserve
+/// against - the model, KV cache, OS, and every other process share one memory pool.
+/// `live_used_gb` (current RSS-wide usage, e.g. `macmon`'s `ram_usage`) already
+/// includes the resident weights, so this computes: total memory, minus whatever is
+/// in use for everything *except* the model weights, minus a safety buffer. That
+/// approximates the ceiling available to [weights + KV cache combined] as though the
+/// non-model footprint (OS, other apps) stays fixed - not "space free right now,"
+/// which would double-count/undercount as the KV cache itself grows during a run.
+pub fn kv_headroom_gb_unified_memory(total_gb: f64, live_used_gb: f64, weight_gb: f64) -> f64 {
+    total_gb - (live_used_gb - weight_gb) - ACTIVATION_KV_BUFFER_GB
+}
+
 /// Coarse preflight weight estimate for GPU-assignment threshold only. Runs
 /// before live config exists, so it uses the catalog's default_weight_dtype
 /// directly, NOT the full resolve_bits_per_param chain. Intentionally separate
@@ -811,5 +826,21 @@ mod tests {
         assert_eq!(state_dtype_bytes(Some("fp8_e4m3")), Some(1));
         assert_eq!(state_dtype_bytes(None), None);
         assert_eq!(state_dtype_bytes(Some("auto")), None);
+    }
+
+    #[test]
+    fn kv_headroom_gb_unified_memory_nets_out_resident_weights() {
+        // 24GB total, 12GB resident (incl. 16GB... wait weights can't exceed total;
+        // use a realistic split: 8GB weights within a 12GB resident footprint.
+        let headroom = kv_headroom_gb_unified_memory(24.0, 12.0, 8.0);
+        // 24 - (12 - 8) - 3.0 buffer = 24 - 4 - 3 = 17.0
+        assert!((headroom - 17.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn kv_headroom_gb_unified_memory_shrinks_as_non_model_usage_grows() {
+        let light_os_load = kv_headroom_gb_unified_memory(24.0, 10.0, 8.0);
+        let heavy_os_load = kv_headroom_gb_unified_memory(24.0, 16.0, 8.0);
+        assert!(heavy_os_load < light_os_load);
     }
 }
