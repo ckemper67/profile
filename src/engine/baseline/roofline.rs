@@ -1676,7 +1676,7 @@ mod tests {
             // Deliberately no gpu_memory_utilization -- llama.cpp never sets it.
             ..Default::default()
         };
-        let snap = EngineRawMetrics {
+        let snap = VllmRawMetrics {
             generation_tokens_per_sec: Some(20.0),
             num_requests_running: Some(1.0),
             ..Default::default()

@@ -19,7 +19,7 @@ use super::vllm::{
     histogram_window_mean_ms, histogram_window_p95_ms, histogram_window_p99_ms, metrics_url,
     sum_metric_samples,
 };
-use super::EngineRawMetrics;
+use super::VllmRawMetrics;
 
 const REQ_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -53,7 +53,7 @@ fn kv_cache_usage_perc_from_scrape(scrape: &Scrape) -> Option<f64> {
 pub fn collect_llamacpp_metrics_for(
     input: &str,
     window: Duration,
-) -> Result<(EngineRawMetrics, SystemTime)> {
+) -> Result<(VllmRawMetrics, SystemTime)> {
     let client = reqwest::blocking::Client::builder()
         .timeout(REQ_TIMEOUT)
         .build()
@@ -87,7 +87,7 @@ pub fn collect_llamacpp_metrics_for(
     let first_scrape = first_scrape.context("llama.cpp gauge window missing first scrape")?;
     let last_scrape = last_scrape.context("llama.cpp gauge window missing last scrape")?;
 
-    let mut m = EngineRawMetrics {
+    let mut m = VllmRawMetrics {
         num_requests_running: first_gauge(&last_scrape, "llamacpp_requests_processing"),
         num_requests_waiting: first_gauge(&last_scrape, "llamacpp_requests_deferred"),
         kv_cache_usage_perc: kv_cache_usage_perc_from_scrape(&last_scrape),
