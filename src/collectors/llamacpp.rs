@@ -91,7 +91,6 @@ pub fn collect_llamacpp_metrics_for(
         num_requests_running: first_gauge(&last_scrape, "llamacpp_requests_processing"),
         num_requests_waiting: first_gauge(&last_scrape, "llamacpp_requests_deferred"),
         kv_cache_usage_perc: kv_cache_usage_perc_from_scrape(&last_scrape),
-        kv_cache_avg_perc: kv_cache_usage_perc_from_scrape(&last_scrape),
         kv_cache_peak_perc,
         ..Default::default()
     };
